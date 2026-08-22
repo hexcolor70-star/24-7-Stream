@@ -44,7 +44,7 @@ jobs:
         env:
           STREAM_KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
         run: |
-          timeout 20700 ffmpeg -loglevel info -stats_period 5 -re -stream_loop -1 -err_detect ignore_err -i music.mp3 \
+          timeout 20700 ffmpeg -loglevel info -stats_period 5 -re -stream_loop -1 -err_detect ignore_err -i track.mp3 \
           -f lavfi -i color=c=black:s=1280x720:r=30 \
           -filter_complex "[1:v]noise=alls=20:allf=t+u,drawtext=text='%{eif\:trunc(clock)-'$START_TIME'\:d}':fontcolor=white:fontsize=72:x=(w-text_w)/2:y=(h-text_h)/2[v]" \
           -map "[v]" -map 0:a \
