@@ -22,20 +22,34 @@ jobs:
           echo "ttf-mscorefonts-installer msttcorefonts/accepted-mscorefonts-eula select true" | sudo debconf-set-selections
           sudo apt-get install -y ffmpeg ttf-mscorefonts-installer
 
+      - name: Setup Start Time
+        run: |
+          NOW=$(date +%s)
+
+          if [ ! -f "time.txt" ]; then
+            echo "Создаем time.txt с первоначальным временем..."
+            echo "$NOW" > time.txt
+            
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add time.txt
+            git commit -m "Save initial stream start time [skip ci]"
+            git push
+          fi
+
+          FIRST_START=$(cat time.txt)
+          OFFSET=$((NOW - FIRST_START))
+
+          if [ $OFFSET -lt 0 ]; then
+            OFFSET=0
+          fi
+
+          echo "OFFSET=$OFFSET" >> $GITHUB_ENV
+
       - name: Start Stream Relay
         env:
           STREAM_KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
         run: |
-          # Unix Timestamp старта (1 сентября 2026, 00:00:00 UTC)
-          # Для текущего теста можно временно поставить TARGET_START=$(date +%s)
-          TARGET_START=1788201600
-          
-          # Текущий timestamp запуска раннера
-          NOW=$(date +%s)
-          
-          # Разница в секундах
-          OFFSET=$((NOW - TARGET_START))
-          
           timeout 20700 ffmpeg -loglevel info -stats_period 5 -re -stream_loop -1 -err_detect ignore_err -i track.mp3 \
           -f lavfi -i color=c=black:s=1280x720:r=30 \
           -filter_complex "[1:v]noise=alls=20:allf=t+u,drawtext=fontfile=/usr/share/fonts/truetype/msttcorefonts/Times_New_Roman_Italic.ttf:text='%{eif\:pts+${OFFSET}\:d}':fontcolor=white:fontsize=84:x=(w-text_w)/2:y=(h-text_h)/2[v]" \
