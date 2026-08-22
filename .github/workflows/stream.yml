@@ -25,7 +25,7 @@ jobs:
         env:
           STREAM_KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
         run: |
-          timeout 20700 ffmpeg -re -stream_loop -1 -i music.mp3 -f lavfi -i color=c=black:s=1280x720:r=30 -c:v libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p -g 60 -c:a aac -b:a 128k -ar 44100 -f flv "rtmp://a.rtmp.youtube.com/live2/$STREAM_KEY" || true
+          timeout 20700 ffmpeg -re -stream_loop -1 -i track.mp3 -f lavfi -i color=c=black:s=1280x720:r=30 -c:v libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p -g 60 -c:a aac -b:a 128k -ar 44100 -f flv "rtmp://a.rtmp.youtube.com/live2/$STREAM_KEY" || true
 
       - name: Trigger Next Workflow Loop
         if: always()
