@@ -1,4 +1,4 @@
-\name: 24/7 Live Stream Relay
+name: 24/7 Live Stream Relay
 
 on:
   schedule:
