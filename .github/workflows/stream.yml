@@ -16,18 +16,37 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Install FFmpeg
+      - name: Install FFmpeg & jq
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg
+          sudo apt-get install -y ffmpeg jq
+
+      - name: Calculate Start Timestamp
+        id: timestamp
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Получаем время создания самого первого запуска воркфлоу в UTC и переводим в Unix Timestamp
+          CREATED_AT=$(curl -s -H "Authorization: bearer $GH_TOKEN" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/workflows/stream.yml/runs?per_page=1&status=completed" \
+            | jq -r '.workflow_runs[0].created_at // empty')
+
+          if [ -z "$CREATED_AT" ]; then
+            # Если завершенных запусков еще нет, берем время текущего
+            START_TIME=$(date +%s)
+          else
+            START_TIME=$(date -d "$CREATED_AT" +%s)
+          fi
+
+          echo "START_TIME=$START_TIME" >> $GITHUB_ENV
 
       - name: Start Stream Relay
         env:
           STREAM_KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
         run: |
-          timeout 20700 ffmpeg -loglevel info -stats_period 5 -re -stream_loop -1 -err_detect ignore_err -i track.mp3 \
+          timeout 20700 ffmpeg -loglevel info -stats_period 5 -re -stream_loop -1 -err_detect ignore_err -i music.mp3 \
           -f lavfi -i color=c=black:s=1280x720:r=30 \
-          -filter_complex "[1:v]noise=alls=20:allf=t+u,drawtext=text='%{eif\:t\:d}':fontcolor=white:fontsize=72:x=(w-text_w)/2:y=(h-text_h)/2[v]" \
+          -filter_complex "[1:v]noise=alls=20:allf=t+u,drawtext=text='%{eif\:trunc(clock)-'$START_TIME'\:d}':fontcolor=white:fontsize=72:x=(w-text_w)/2:y=(h-text_h)/2[v]" \
           -map "[v]" -map 0:a \
           -c:v libx264 -preset ultrafast -b:v 2500k -minrate 2500k -maxrate 2800k -bufsize 5000k -tune zerolatency -pix_fmt yuv420p -g 60 \
           -c:a aac -b:a 128k -ar 44100 \
