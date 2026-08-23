@@ -36,7 +36,7 @@ jobs:
           echo "Используется шрифт: $FONT_FILE"
           echo "FONT_FILE=$FONT_FILE" >> $GITHUB_ENV
 
-      - name: Setup Start Time
+      - name: Setup Start Time & Formulas
         run: |
           NOW=$(date +%s)
 
@@ -58,27 +58,33 @@ jobs:
             OFFSET=0
           fi
 
-          echo "OFFSET=$OFFSET" >> $GITHUB_ENV
+          REMAINING_OFFSET=$((10000000 - OFFSET))
+          if [ $REMAINING_OFFSET -lt 0 ]; then
+            REMAINING_OFFSET=0
+          fi
 
-      - name: Start Stream Relay with Seamless Handover
+          echo "OFFSET=$OFFSET" >> $GITHUB_ENV
+          echo "REMAINING_OFFSET=$REMAINING_OFFSET" >> $GITHUB_ENV
+
+      - name: Start Stream Relay with Dashboard
         env:
           STREAM_KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
           GH_PAT: ${{ secrets.GH_PAT }}
         run: |
-          # Запускаем фоновый таймер: за 60 секунд до конца (через 20640 сек) триггерим следующий раннер,
-          # чтобы он успел подняться и встать в готовность до завершения текущего
           (sleep 20640 && curl -X POST \
             -H "Authorization: token $GH_PAT" \
             -H "Accept: application/vnd.github.v3+json" \
             https://api.github.com/repos/${{ github.repository }}/actions/workflows/stream.yml/dispatches \
             -d '{"ref":"main"}') &
 
-          # Запуск идеального чистого потока на 5ч 45мин (20700 сек) без шума
           timeout 20700 ffmpeg -loglevel info -stats_period 5 -re -stream_loop -1 -err_detect ignore_err -i track.mp3 \
             -f lavfi -i color=c=black:s=1280x720:r=30 \
-            -filter_complex "[1:v]drawtext=fontfile=${FONT_FILE}:text='%{eif\:t+${OFFSET}\:d}':fontcolor=white:fontsize=84:x=(w-text_w)/2:y=(h-text_h)/2[v]" \
+            -filter_complex "[1:v]\
+              drawtext=fontfile=${FONT_FILE}:text='%{eif\:t+${OFFSET}\:d}':fontcolor=white:fontsize=96:x=(w-text_w)/2:y=(h-text_h)/2-100,\
+              drawtext=fontfile=${FONT_FILE}:text='Remaining\: %{eif\:${REMAINING_OFFSET}-t\:d} sec':fontcolor=gray:fontsize=36:x=(w-text_w)/2:y=(h-text_h)/2+20,\
+              drawtext=fontfile=${FONT_FILE}:text='Time Left\: %{pts\:gmtime\:${REMAINING_OFFSET}-t\:%j d %H\:%M\:%S}':fontcolor=gray:fontsize=32:x=(w-text_w)/2:y=(h-text_h)/2+70,\
+              drawtext=fontfile=${FONT_FILE}:text='Progress\: %{eif\:(t+${OFFSET})*100/10000000\:d}.%{eif\:((t+${OFFSET})*10000/10000000)%100\:d}%%':fontcolor=0x00FF00:fontsize=32:x=(w-text_w)/2:y=(h-text_h)/2+120[v]" \
             -map "[v]" -map 0:a \
-            -c:v libx264 -preset veryfast -b:v 2500k -minrate 2500k -maxrate 2800k -bufsize 5000k -tune zerolatency -pix_fmt yuv420p -g 60 \
+            -c:v libx264 -preset veryfast -b:v 2500k -minrate 2500k -maxrate 2500k -bufsize 2500k -x264-params nal-hrd=cbr -tune zerolatency -pix_fmt yuv420p -g 60 \
             -c:a aac -b:a 128k -ar 44100 \
             -f flv "rtmp://a.rtmp.youtube.com/live2/$STREAM_KEY" || true
-            
