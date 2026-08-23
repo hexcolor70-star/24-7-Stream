@@ -19,10 +19,16 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Install FFmpeg
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg
+          pip install requests
 
       - name: Detect Font File
         run: |
@@ -66,11 +72,67 @@ jobs:
           echo "OFFSET=$OFFSET" >> $GITHUB_ENV
           echo "REMAINING_OFFSET=$REMAINING_OFFSET" >> $GITHUB_ENV
 
+      - name: Create Python Sub Updater Script
+        run: |
+          cat << 'EOF' > update_subs.py
+          import os
+          import time
+          import requests
+
+          API_KEY = os.environ.get("YOUTUBE_API_KEY", "")
+          CHANNEL_ID = os.environ.get("YOUTUBE_CHANNEL_ID", "")
+          GOAL = 100
+
+          SUBS_FILE = "subs.txt"
+          ALERT_FILE = "alert.txt"
+
+          with open(SUBS_FILE, "w", encoding="utf-8") as f:
+              f.write(f"Subscribers: -- / {GOAL}")
+
+          with open(ALERT_FILE, "w", encoding="utf-8") as f:
+              f.write("")
+
+          last_sub_count = None
+
+          def get_sub_count():
+              if not API_KEY or not CHANNEL_ID:
+                  return None
+              url = f"https://www.googleapis.com/youtube/v3/channels?part=statistics&id={CHANNEL_ID}&key={API_KEY}"
+              try:
+                  res = requests.get(url, timeout=5).json()
+                  return int(res["items"][0]["statistics"]["subscriberCount"])
+              except Exception as e:
+                  print(f"Error: {e}")
+                  return None
+
+          while True:
+              current_subs = get_sub_count()
+              if current_subs is not None:
+                  with open(SUBS_FILE, "w", encoding="utf-8") as f:
+                      f.write(f"Subscribers: {current_subs} / {GOAL}")
+                  
+                  if last_sub_count is not None and current_subs > last_sub_count:
+                      with open(ALERT_FILE, "w", encoding="utf-8") as f:
+                          f.write("Thanks for Subscribe!")
+                      time.sleep(10)
+                      with open(ALERT_FILE, "w", encoding="utf-8") as f:
+                          f.write("")
+                  
+                  last_sub_count = current_subs
+              time.sleep(15)
+          EOF
+
       - name: Start Stream Relay
         env:
           STREAM_KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
           GH_PAT: ${{ secrets.GH_PAT }}
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+          YOUTUBE_CHANNEL_ID: ${{ secrets.YOUTUBE_CHANNEL_ID }}
         run: |
+          # Запуск скрипта обновления подписчиков в фоне
+          python update_subs.py &
+
+          # Запуск перезапуска Workflow через 5.7 часов
           (sleep 20640 && curl -X POST \
             -H "Authorization: token $GH_PAT" \
             -H "Accept: application/vnd.github.v3+json" \
@@ -82,6 +144,8 @@ jobs:
             -filter_complex "[1:v]\
               drawtext=fontfile=${FONT_FILE}:text='%{eif\:t+${OFFSET}\:d}':fontcolor=white:fontsize=100:x=(w-text_w)/2:y=(h-text_h)/2:enable='lte(t+${OFFSET},10000000)',\
               drawtext=fontfile=${FONT_FILE}:text='@uttunbalacu9':fontcolor=white@0.3:fontsize=28:x=30:y=30:enable='lte(t+${OFFSET},10000000)',\
+              drawtext=fontfile=${FONT_FILE}:textfile='subs.txt':reload=1:fontcolor=white@0.5:fontsize=22:x=30:y=70:enable='lte(t+${OFFSET},10000000)',\
+              drawtext=fontfile=${FONT_FILE}:textfile='alert.txt':reload=1:fontcolor=white:fontsize=32:x=(w-text_w)/2:y=h-80:box=1:boxcolor=black@0.6:boxborderw=10:enable='lte(t+${OFFSET},10000000)',\
               drawtext=fontfile=${FONT_FILE}:text='Time Left\: %{eif\:(${REMAINING_OFFSET}-t)/86400\:d}d %{eif\:mod((${REMAINING_OFFSET}-t)/3600\,24)\:d}h %{eif\:mod((${REMAINING_OFFSET}-t)/60\,60)\:d}m %{eif\:mod(${REMAINING_OFFSET}-t\,60)\:d}s':fontcolor=gray:fontsize=28:x=w-text_w-30:y=30:enable='lte(t+${OFFSET},10000000)'[v];\
               [0:a]volume=0:enable='gt(t+${OFFSET},10000000)'[a]" \
             -map "[v]" -map "[a]" \
