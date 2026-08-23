@@ -58,7 +58,6 @@ jobs:
             OFFSET=0
           fi
 
-          # Добавили +1, чтобы таймер Time Left приходил ровно в 00d 00h 00m 00s на 10 000 000
           REMAINING_OFFSET=$((10000001 - OFFSET))
           if [ $REMAINING_OFFSET -lt 0 ]; then
             REMAINING_OFFSET=0
@@ -67,7 +66,7 @@ jobs:
           echo "OFFSET=$OFFSET" >> $GITHUB_ENV
           echo "REMAINING_OFFSET=$REMAINING_OFFSET" >> $GITHUB_ENV
 
-      - name: Start Stream Relay with Dark Fade Finish
+      - name: Start Stream Relay
         env:
           STREAM_KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
           GH_PAT: ${{ secrets.GH_PAT }}
@@ -81,12 +80,10 @@ jobs:
           timeout 20700 ffmpeg -loglevel info -stats_period 5 -re -stream_loop -1 -err_detect ignore_err -i track.mp3 \
             -f lavfi -i color=c=black:s=1280x720:r=30 \
             -filter_complex "[1:v]\
-              drawtext=fontfile=${FONT_FILE}:text='%{eif\:t+${OFFSET}\:d}':fontcolor=white:fontsize=100:x=(w-text_w)/2:y=(h-text_h)/2:enable='lte(t+${OFFSET},10000000)',\
+              drawtext=fontfile=${FONT_FILE}:text='%{eif\:trunc(t+${OFFSET})\:d}':fontcolor=white:fontsize=100:x=(w-text_w)/2:y=(h-text_h)/2:enable='lte(t+${OFFSET},10000000)',\
               drawtext=fontfile=${FONT_FILE}:text='@uttunbalacu9':fontcolor=white@0.3:fontsize=28:x=30:y=30:enable='lte(t+${OFFSET},10000000)',\
-              drawtext=fontfile=${FONT_FILE}:text='Time Left\: %{eif\:(${REMAINING_OFFSET}-t)/86400\:d}d %{eif\:mod((${REMAINING_OFFSET}-t)/3600\,24)\:d}h %{eif\:mod((${REMAINING_OFFSET}-t)/60\,60)\:d}m %{eif\:mod(${REMAINING_OFFSET}-t\,60)\:d}s':fontcolor=gray:fontsize=28:x=w-text_w-30:y=30:enable='lte(t+${OFFSET},10000000)',\
-              drawtext=fontfile=${FONT_FILE}:text='Thanks for Watching':fontcolor=white:fontsize=64:x=(w-text_w)/2:y=(h-text_h)/2:enable='between(t+${OFFSET},10000010,10000015)',\
-              fade=t=out:st=10000013:d=2[v];\
-              afade=t=out:st=10000000:d=2[a]" \
+              drawtext=fontfile=${FONT_FILE}:text='Time Left\: %{eif\:trunc((${REMAINING_OFFSET}-t)/86400)\:d}d %{eif\:mod(trunc((${REMAINING_OFFSET}-t)/3600),24)\:d}h %{eif\:mod(trunc((${REMAINING_OFFSET}-t)/60),60)\:d}m %{eif\:mod(trunc(${REMAINING_OFFSET}-t),60)\:d}s':fontcolor=gray:fontsize=28:x=w-text_w-30:y=30:enable='lte(t+${OFFSET},10000000)'[v];\
+              [0:a]volume=0:enable='gt(t+${OFFSET},10000000)'[a]" \
             -map "[v]" -map "[a]" \
             -c:v libx264 -preset veryfast -b:v 2500k -minrate 2500k -maxrate 2500k -bufsize 2500k -x264-params nal-hrd=cbr -tune zerolatency -pix_fmt yuv420p -g 60 \
             -c:a aac -b:a 128k -ar 44100 \
