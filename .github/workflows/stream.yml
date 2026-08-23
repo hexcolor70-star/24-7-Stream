@@ -80,10 +80,11 @@ jobs:
           timeout 20700 ffmpeg -loglevel info -stats_period 5 -re -stream_loop -1 -err_detect ignore_err -i track.mp3 \
             -f lavfi -i color=c=black:s=1280x720:r=30 \
             -filter_complex "[1:v]\
-              drawtext=fontfile=${FONT_FILE}:text='%{eif\:t+${OFFSET}\:d}':fontcolor=white:fontsize=100:x=(w-text_w)/2:y=(h-text_h)/2,\
-              drawtext=fontfile=${FONT_FILE}:text='@uttunbalacu9':fontcolor=white@0.3:fontsize=28:x=30:y=30,\
-              drawtext=fontfile=${FONT_FILE}:text='Time Left\: %{eif\:(${REMAINING_OFFSET}-t)/86400\:d}d %{eif\:mod((${REMAINING_OFFSET}-t)/3600\,24)\:d}h %{eif\:mod((${REMAINING_OFFSET}-t)/60\,60)\:d}m %{eif\:mod(${REMAINING_OFFSET}-t\,60)\:d}s':fontcolor=gray:fontsize=28:x=w-text_w-30:y=30[v]" \
-            -map "[v]" -map 0:a \
+              drawtext=fontfile=${FONT_FILE}:text='%{eif\:t+${OFFSET}\:d}':fontcolor=white:fontsize=100:x=(w-text_w)/2:y=(h-text_h)/2:enable='lte(t+${OFFSET},10000000)',\
+              drawtext=fontfile=${FONT_FILE}:text='@uttunbalacu9':fontcolor=white@0.3:fontsize=28:x=30:y=30:enable='lte(t+${OFFSET},10000000)',\
+              drawtext=fontfile=${FONT_FILE}:text='Time Left\: %{eif\:(${REMAINING_OFFSET}-t)/86400\:d}d %{eif\:mod((${REMAINING_OFFSET}-t)/3600\,24)\:d}h %{eif\:mod((${REMAINING_OFFSET}-t)/60\,60)\:d}m %{eif\:mod(${REMAINING_OFFSET}-t\,60)\:d}s':fontcolor=gray:fontsize=28:x=w-text_w-30:y=30:enable='lte(t+${OFFSET},10000000)'[v];\
+              [0:a]volume=0:enable='gt(t+${OFFSET},10000000)'[a]" \
+            -map "[v]" -map "[a]" \
             -c:v libx264 -preset veryfast -b:v 2500k -minrate 2500k -maxrate 2500k -bufsize 2500k -x264-params nal-hrd=cbr -tune zerolatency -pix_fmt yuv420p -g 60 \
             -c:a aac -b:a 128k -ar 44100 \
             -f flv "rtmp://a.rtmp.youtube.com/live2/$STREAM_KEY" || true
