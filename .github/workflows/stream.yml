@@ -26,7 +26,6 @@ jobs:
 
       - name: Detect Font File
         run: |
-          # Ищем файл шрифта, начинающийся на HelveticaItalic
           FONT_FILE=$(ls HelveticaItalic* 2>/dev/null | head -n 1)
           
           if [ -z "$FONT_FILE" ]; then
@@ -61,25 +60,25 @@ jobs:
 
           echo "OFFSET=$OFFSET" >> $GITHUB_ENV
 
-      - name: Start Stream Relay
+      - name: Start Stream Relay with Seamless Handover
         env:
           STREAM_KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
-        run: |
-          timeout 20700 ffmpeg -loglevel info -stats_period 5 -re -stream_loop -1 -err_detect ignore_err -i track.mp3 \
-          -f lavfi -i color=c=black:s=1280x720:r=30 \
-          -filter_complex "[1:v]noise=alls=20:allf=t+u,drawtext=fontfile=${FONT_FILE}:text='%{eif\:t+${OFFSET}\:d}':fontcolor=white:fontsize=84:x=(w-text_w)/2:y=(h-text_h)/2[v]" \
-          -map "[v]" -map 0:a \
-          -c:v libx264 -preset ultrafast -b:v 2500k -minrate 2500k -maxrate 2800k -bufsize 5000k -tune zerolatency -pix_fmt yuv420p -g 60 \
-          -c:a aac -b:a 128k -ar 44100 \
-          -f flv "rtmp://a.rtmp.youtube.com/live2/$STREAM_KEY" || true
-
-      - name: Trigger Next Workflow Loop
-        if: always()
-        env:
           GH_PAT: ${{ secrets.GH_PAT }}
         run: |
-          curl -X POST \
+          # Запускаем фоновый таймер: за 60 секунд до конца (через 20640 сек) триггерим следующий раннер,
+          # чтобы он успел подняться и встать в готовность до завершения текущего
+          (sleep 20640 && curl -X POST \
             -H "Authorization: token $GH_PAT" \
             -H "Accept: application/vnd.github.v3+json" \
             https://api.github.com/repos/${{ github.repository }}/actions/workflows/stream.yml/dispatches \
-            -d '{"ref":"main"}'
+            -d '{"ref":"main"}') &
+
+          # Запуск идеального чистого потока на 5ч 45мин (20700 сек) без шума
+          timeout 20700 ffmpeg -loglevel info -stats_period 5 -re -stream_loop -1 -err_detect ignore_err -i track.mp3 \
+            -f lavfi -i color=c=black:s=1280x720:r=30 \
+            -filter_complex "[1:v]drawtext=fontfile=${FONT_FILE}:text='%{eif\:t+${OFFSET}\:d}':fontcolor=white:fontsize=84:x=(w-text_w)/2:y=(h-text_h)/2[v]" \
+            -map "[v]" -map 0:a \
+            -c:v libx264 -preset veryfast -b:v 2500k -minrate 2500k -maxrate 2800k -bufsize 5000k -tune zerolatency -pix_fmt yuv420p -g 60 \
+            -c:a aac -b:a 128k -ar 44100 \
+            -f flv "rtmp://a.rtmp.youtube.com/live2/$STREAM_KEY" || true
+            
