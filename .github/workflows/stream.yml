@@ -123,6 +123,7 @@ jobs:
               time.sleep(15)
           EOF
 
+          
       - name: Start Stream Relay
         env:
           STREAM_KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
@@ -130,6 +131,10 @@ jobs:
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
           YOUTUBE_CHANNEL_ID: ${{ secrets.YOUTUBE_CHANNEL_ID }}
         run: |
+          # Создаем файлы-заглушки до запуска FFmpeg, чтобы избежать ошибки "No such file"
+          echo "Subscribers: -- / 100" > subs.txt
+          touch alert.txt
+
           python update_subs.py &
 
           # Отправляем триггер за 7 минут (420 сек) до конца работы таймаута
