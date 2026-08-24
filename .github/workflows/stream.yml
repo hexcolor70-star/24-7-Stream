@@ -44,27 +44,22 @@ jobs:
 
       - name: Setup Start Time & Formulas
         run: |
-          NOW=$(date +%s)
-
           if [ ! -f "time.txt" ]; then
-            echo "Создаем time.txt с первоначальным временем..."
-            echo "$NOW" > time.txt
+            echo "0" > time.txt
             
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
             git add time.txt
-            git commit -m "Save initial stream start time [skip ci]"
-            git push
+            git commit -m "Initialize offset counter [skip ci]" || true
+            git push || true
           fi
 
-          FIRST_START=$(cat time.txt)
-          OFFSET=$((NOW - FIRST_START))
-
-          if [ $OFFSET -lt 0 ]; then
+          OFFSET=$(cat time.txt)
+          if [ -z "$OFFSET" ]; then
             OFFSET=0
           fi
 
-          REMAINING_OFFSET=$((10000001 - OFFSET))
+          REMAINING_OFFSET=$((10000000 - OFFSET))
           if [ $REMAINING_OFFSET -lt 0 ]; then
             REMAINING_OFFSET=0
           fi
@@ -123,7 +118,6 @@ jobs:
               time.sleep(15)
           EOF
 
-          
       - name: Start Stream Relay
         env:
           STREAM_KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
@@ -131,19 +125,22 @@ jobs:
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
           YOUTUBE_CHANNEL_ID: ${{ secrets.YOUTUBE_CHANNEL_ID }}
         run: |
-          # Создаем файлы-заглушки до запуска FFmpeg, чтобы избежать ошибки "No such file"
           echo "Subscribers: -- / 100" > subs.txt
           touch alert.txt
 
           python update_subs.py &
 
-          # Отправляем триггер за 7 минут (420 сек) до конца работы таймаута
+          # 1. Запуск триггера следующего воркфлоу за 7 минут (420 сек) до завершения
           (sleep 20280 && curl -X POST \
             -H "Authorization: token $GH_PAT" \
             -H "Accept: application/vnd.github.v3+json" \
             https://api.github.com/repos/${{ github.repository }}/dispatches \
             -d '{"event_type":"next_stream"}') &
 
+          # 2. Засекаем точный запуск FFmpeg
+          START_TIME=$(date +%s)
+
+          # 3. Запуск FFmpeg
           timeout 20700 ffmpeg -loglevel info -stats_period 5 \
             -re -stream_loop -1 -vn -i track.mp3 \
             -f lavfi -i color=c=black:s=1280x720:r=30 \
@@ -165,5 +162,25 @@ jobs:
             -reconnect_delay_max 1 \
             -f flv \
             -flvflags no_duration_filesize \
-            "rtmp://a.rtmp.youtube.com/live2/$STREAM_KEY tcp_nodelay=1 rw_timeout=2000000" || true
-            
+            "rtmp://a.rtmp.youtube.com/live2/$STREAM_KEY tcp_nodelay=1 rw_timeout=2000000" 2>&1 | tee ffmpeg_debug.log || true
+
+          # 4. Фиксируем точное время остановки и считаем чистый хронометраж работы FFmpeg
+          END_TIME=$(date +%s)
+          WORKED_SECONDS=$((END_TIME - START_TIME))
+          NEW_OFFSET=$((${OFFSET} + WORKED_SECONDS))
+
+          # 5. Сохраняем новый OFFSET в репозиторий
+          echo "$NEW_OFFSET" > time.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add time.txt
+          git commit -m "Update counter offset to $NEW_OFFSET [skip ci]" || true
+          git push origin main || true
+
+      - name: Upload Debug Log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ffmpeg-log
+          path: ffmpeg_debug.log
+          
