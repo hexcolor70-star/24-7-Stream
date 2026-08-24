@@ -1,13 +1,13 @@
 name: 24/7 Live Stream Relay
 
 on:
-  schedule:
-    - cron: '45 */5 * * *'
   workflow_dispatch:
+  repository_dispatch:
+    types: [next_stream]
 
 concurrency:
   group: live-stream-group
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 permissions:
   contents: write
@@ -86,7 +86,6 @@ jobs:
           SUBS_FILE = "subs.txt"
           ALERT_FILE = "alert.txt"
 
-          # Функция атомарной записи через временный файл
           def safe_write(filename, text):
               tmp_file = filename + ".tmp"
               with open(tmp_file, "w", encoding="utf-8") as f:
@@ -133,11 +132,12 @@ jobs:
         run: |
           python update_subs.py &
 
-          (sleep 20640 && curl -X POST \
+          # Отправляем триггер за 7 минут (420 сек) до конца работы таймаута
+          (sleep 20280 && curl -X POST \
             -H "Authorization: token $GH_PAT" \
             -H "Accept: application/vnd.github.v3+json" \
-            https://api.github.com/repos/${{ github.repository }}/actions/workflows/stream.yml/dispatches \
-            -d '{"ref":"main"}') &
+            https://api.github.com/repos/${{ github.repository }}/dispatches \
+            -d '{"event_type":"next_stream"}') &
 
           timeout 20700 ffmpeg -loglevel info -stats_period 5 -re -stream_loop -1 -err_detect ignore_err -vn -i track.mp3 \
             -f lavfi -i color=c=black:s=1280x720:r=30 \
@@ -146,3 +146,4 @@ jobs:
             -c:v libx264 -preset veryfast -b:v 2500k -minrate 2500k -maxrate 2500k -bufsize 2500k -x264-params nal-hrd=cbr -tune zerolatency -pix_fmt yuv420p -g 60 \
             -c:a aac -b:a 128k -ar 44100 \
             -f flv "rtmp://a.rtmp.youtube.com/live2/$STREAM_KEY" || true
+            
