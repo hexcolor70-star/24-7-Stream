@@ -139,11 +139,12 @@ jobs:
             https://api.github.com/repos/${{ github.repository }}/dispatches \
             -d '{"event_type":"next_stream"}') &
 
-          timeout 20700 ffmpeg -loglevel info -stats_period 5 -re -stream_loop -1 -err_detect ignore_err -vn -i track.mp3 \
+          timeout 20700 ffmpeg -loglevel info -stats_period 5 -re -stream_loop -1 -vn -i track.mp3 \
             -f lavfi -i color=c=black:s=1280x720:r=30 \
-            -filter_complex "[1:v]drawtext=fontfile=${FONT_FILE}:text='%{eif\:t+${OFFSET}\:d}':fontcolor=white:fontsize=100:x=(w-text_w)/2:y=(h-text_h)/2:enable='lte(t+${OFFSET},10000000)',drawtext=fontfile=${FONT_FILE}:text='@uttunbalacu9':fontcolor=white@0.3:fontsize=28:x=30:y=30:enable='lte(t+${OFFSET},10000000)',drawtext=fontfile=${FONT_FILE}:textfile='subs.txt':reload=1:fontcolor=white@0.5:fontsize=22:x=30:y=70:enable='lte(t+${OFFSET},10000000)',drawtext=fontfile=${FONT_FILE}:textfile='alert.txt':reload=1:fontcolor=white:fontsize=32:x=(w-text_w)/2:y=h-80:box=1:boxcolor=black@0.6:boxborderw=10:enable='lte(t+${OFFSET},10000000)',drawtext=fontfile=${FONT_FILE}:text='Time Left\: %{eif\:(${REMAINING_OFFSET}-t)/86400\:d}d %{eif\:mod((${REMAINING_OFFSET}-t)/3600\,24)\:d}h %{eif\:mod((${REMAINING_OFFSET}-t)/60\,60)\:d}m %{eif\:mod(${REMAINING_OFFSET}-t\,60)\:d}s':fontcolor=gray:fontsize=28:x=w-text_w-30:y=30:enable='lte(t+${OFFSET},10000000)'[v];[0:a]volume=0.35:enable='lte(t+${OFFSET},10000000)',volume=0:enable='gt(t+${OFFSET},10000000)'[a]" \
+            -filter_complex "[1:v]drawtext=fontfile=${FONT_FILE}:text='%{eif\:(n/30)+${OFFSET}\:d}':fontcolor=white:fontsize=100:x=(w-text_w)/2:y=(h-text_h)/2:enable='lte((n/30)+${OFFSET},10000000)',drawtext=fontfile=${FONT_FILE}:text='@uttunbalacu9':fontcolor=white@0.3:fontsize=28:x=30:y=30:enable='lte((n/30)+${OFFSET},10000000)',drawtext=fontfile=${FONT_FILE}:textfile='subs.txt':reload=1:fontcolor=white@0.5:fontsize=22:x=30:y=70:enable='lte((n/30)+${OFFSET},10000000)',drawtext=fontfile=${FONT_FILE}:textfile='alert.txt':reload=1:fontcolor=white:fontsize=32:x=(w-text_w)/2:y=h-80:box=1:boxcolor=black@0.6:boxborderw=10:enable='lte((n/30)+${OFFSET},10000000)',drawtext=fontfile=${FONT_FILE}:text='Time Left\: %{eif\:(${REMAINING_OFFSET}-(n/30))/86400\:d}d %{eif\:mod((${REMAINING_OFFSET}-(n/30))/3600\,24)\:d}h %{eif\:mod((${REMAINING_OFFSET}-(n/30))/60\,60)\:d}m %{eif\:mod(${REMAINING_OFFSET}-(n/30)\,60)\:d}s':fontcolor=gray:fontsize=28:x=w-text_w-30:y=30:enable='lte((n/30)+${OFFSET},10000000)'[v];[0:a]volume=0.35:enable='lte((n/30)+${OFFSET},10000000)',volume=0:enable='gt((n/30)+${OFFSET},10000000)'[a]" \
             -map "[v]" -map "[a]" \
             -c:v libx264 -preset veryfast -b:v 2500k -minrate 2500k -maxrate 2500k -bufsize 2500k -x264-params nal-hrd=cbr -tune zerolatency -pix_fmt yuv420p -g 60 \
             -c:a aac -b:a 128k -ar 44100 \
-            -f flv "rtmp://a.rtmp.youtube.com/live2/$STREAM_KEY" || true
+            -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 2 \
+            -f flv -flvflags no_duration_filesize "rtmp://a.rtmp.youtube.com/live2/$STREAM_KEY" || true
             
