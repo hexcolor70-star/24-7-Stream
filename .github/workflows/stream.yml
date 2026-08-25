@@ -46,7 +46,6 @@ jobs:
         run: |
           if [ ! -f "time.txt" ]; then
             echo "0" > time.txt
-            
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
             git add time.txt
@@ -54,7 +53,10 @@ jobs:
             git push || true
           fi
 
-          OFFSET=$(cat time.txt)
+          # Чистим OFFSET от всех невидимых переносов строк и пробелов
+          RAW_OFFSET=$(cat time.txt)
+          OFFSET=$(echo "$RAW_OFFSET" | tr -cd '0-9')
+          
           if [ -z "$OFFSET" ]; then
             OFFSET=0
           fi
@@ -66,6 +68,7 @@ jobs:
 
           echo "OFFSET=$OFFSET" >> $GITHUB_ENV
           echo "REMAINING_OFFSET=$REMAINING_OFFSET" >> $GITHUB_ENV
+          
 
       - name: Create Python Sub Updater Script
         run: |
