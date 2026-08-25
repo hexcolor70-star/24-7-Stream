@@ -136,19 +136,36 @@ jobs:
 
           # Стрим идет ровно 20700 секунд (5ч 45мин)
           timeout 20700 ffmpeg -loglevel info -stats_period 5 \
-            -f lavfi -i color=c=black:s=1280x720:r=30 \
-            -re -stream_loop -1 -i track.mp3 \
-            -filter_complex "[0:v]drawtext=fontfile=${FONT_FILE}:text='%{eif\:t+${OFFSET}\:d}':fontcolor=white:fontsize=100:x=(w-text_w)/2:y=(h-text_h)/2,drawtext=fontfile=${FONT_FILE}:text='@uttunbalacu9':fontcolor=white@0.3:fontsize=28:x=30:y=30,drawtext=fontfile=${FONT_FILE}:textfile='subs.txt':reload=1:fontcolor=white@0.5:fontsize=22:x=30:y=70,drawtext=fontfile=${FONT_FILE}:textfile='alert.txt':reload=1:fontcolor=white:fontsize=32:x=(w-text_w)/2:y=h-80:box=1:boxcolor=black@0.6:boxborderw=10,drawtext=fontfile=${FONT_FILE}:text='Time Left\: %{eif\:(${REMAINING_OFFSET}-t)/86400\:d}d %{eif\:mod((${REMAINING_OFFSET}-t)/3600\,24)\:d}h %{eif\:mod((${REMAINING_OFFSET}-t)/60\,60)\:d}m %{eif\:mod(${REMAINING_OFFSET}-t\,60)\:d}s':fontcolor=gray:fontsize=28:x=w-text_w-30:y=30[v];[1:a]volume=0.35[a]" \
+            -re -f lavfi -i color=c=black:s=1280x720:r=30 \
+            -stream_loop -1 -i track.mp3 \
+            -filter_complex "[0:v]fps=fps=30,setpts=N/(30*TB),drawtext=fontfile=${FONT_FILE}:text='%{eif\:t+${OFFSET}\:d}':fontcolor=white:fontsize=100:x=(w-text_w)/2:y=(h-text_h)/2,drawtext=fontfile=${FONT_FILE}:text='@uttunbalacu9':fontcolor=white@0.3:fontsize=28:x=30:y=30,drawtext=fontfile=${FONT_FILE}:textfile='subs.txt':reload=1:fontcolor=white@0.5:fontsize=22:x=30:y=70,drawtext=fontfile=${FONT_FILE}:textfile='alert.txt':reload=1:fontcolor=white:fontsize=32:x=(w-text_w)/2:y=h-80:box=1:boxcolor=black@0.6:boxborderw=10,drawtext=fontfile=${FONT_FILE}:text='Time Left\: %{eif\:(${REMAINING_OFFSET}-t)/86400\:d}d %{eif\:mod((${REMAINING_OFFSET}-t)/3600\,24)\:d}h %{eif\:mod((${REMAINING_OFFSET}-t)/60\,60)\:d}m %{eif\:mod(${REMAINING_OFFSET}-t\,60)\:d}s':fontcolor=gray:fontsize=28:x=w-text_w-30:y=30[v];[1:a]volume=0.35[a]" \
             -map "[v]" -map "[a]" \
-            -c:v libx264 -preset ultrafast -b:v 2500k -maxrate 2500k -bufsize 2500k -pix_fmt yuv420p -g 60 \
+            -c:v libx264 -preset ultrafast -fps_mode cfr -b:v 2500k -maxrate 2500k -bufsize 2500k -pix_fmt yuv420p -g 60 \
             -c:a aac -b:a 128k -ar 44100 \
             -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 1 \
             -f flv \
             "rtmp://a.rtmp.youtube.com/live2/$STREAM_KEY tcp_nodelay=1 rw_timeout=2000000" 2>&1 | tee ffmpeg_debug.log || true
 
-          # 1. Считаем и сохраняем новое время
-          END_TIME=$(date +%s)
-          WORKED_SECONDS=$((END_TIME - START_TIME))
+          # 1. Извлекаем ПОЛНОСТЬЮ ТОЧНОЕ время, срендеренное FFmpeg
+          LAST_TIME=$(grep -o "time=[0-9:\.]*" ffmpeg_debug.log | tail -n 1 | cut -d'=' -f2)
+
+          if [ -n "$LAST_TIME" ]; then
+            HOURS=$(echo $LAST_TIME | cut -d: -f1 | sed 's/^0*//')
+            MINS=$(echo $LAST_TIME | cut -d: -f2 | sed 's/^0*//')
+            SECS=$(echo $LAST_TIME | cut -d. -f1 | cut -d: -f3 | sed 's/^0*//')
+            
+            HOURS=${HOURS:-0}
+            MINS=${MINS:-0}
+            SECS=${SECS:-0}
+            
+            WORKED_SECONDS=$((HOURS * 3600 + MINS * 60 + SECS))
+            echo "FFmpeg отрендерил точно $WORKED_SECONDS секунд."
+          else
+            END_TIME=$(date +%s)
+            WORKED_SECONDS=$((END_TIME - START_TIME))
+            echo "Внимание: не удалось спарсить FFmpeg log, задействован системный fallback: $WORKED_SECONDS сек."
+          fi
+
           NEW_OFFSET=$((${OFFSET} + WORKED_SECONDS))
 
           echo "$NEW_OFFSET" > time.txt
@@ -158,14 +175,12 @@ jobs:
           git commit -m "Update counter offset to $NEW_OFFSET [skip ci]" || true
           git push origin main || true
 
-          # 2. ТОЛЬКО ТЕПЕРЬ вызываем следующий воркфлоу!
+          # 2. Вызываем следующий воркфлоу
           curl -X POST \
             -H "Authorization: token $GH_PAT" \
             -H "Accept: application/vnd.github.v3+json" \
             https://api.github.com/repos/${{ github.repository }}/dispatches \
             -d '{"event_type":"next_stream"}'
-            
-          
 
       - name: Upload Debug Log
         if: always()
