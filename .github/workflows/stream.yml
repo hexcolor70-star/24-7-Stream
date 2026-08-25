@@ -132,14 +132,9 @@ jobs:
 
           python update_subs.py &
 
-          (sleep 20280 && curl -X POST \
-            -H "Authorization: token $GH_PAT" \
-            -H "Accept: application/vnd.github.v3+json" \
-            https://api.github.com/repos/${{ github.repository }}/dispatches \
-            -d '{"event_type":"next_stream"}') &
-
           START_TIME=$(date +%s)
 
+          # Стрим идет ровно 20700 секунд (5ч 45мин)
           timeout 20700 ffmpeg -loglevel info -stats_period 5 \
             -f lavfi -i color=c=black:s=1280x720:r=30 \
             -re -stream_loop -1 -i track.mp3 \
@@ -150,8 +145,8 @@ jobs:
             -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 1 \
             -f flv \
             "rtmp://a.rtmp.youtube.com/live2/$STREAM_KEY tcp_nodelay=1 rw_timeout=2000000" 2>&1 | tee ffmpeg_debug.log || true
-            
 
+          # 1. Считаем и сохраняем новое время
           END_TIME=$(date +%s)
           WORKED_SECONDS=$((END_TIME - START_TIME))
           NEW_OFFSET=$((${OFFSET} + WORKED_SECONDS))
@@ -162,6 +157,14 @@ jobs:
           git add time.txt
           git commit -m "Update counter offset to $NEW_OFFSET [skip ci]" || true
           git push origin main || true
+
+          # 2. ТОЛЬКО ТЕПЕРЬ вызываем следующий воркфлоу!
+          curl -X POST \
+            -H "Authorization: token $GH_PAT" \
+            -H "Accept: application/vnd.github.v3+json" \
+            https://api.github.com/repos/${{ github.repository }}/dispatches \
+            -d '{"event_type":"next_stream"}'
+            
           
 
       - name: Upload Debug Log
