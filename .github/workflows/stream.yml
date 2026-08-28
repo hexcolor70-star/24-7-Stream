@@ -128,7 +128,7 @@ jobs:
           YOUTUBE_CHANNEL_ID: ${{ secrets.YOUTUBE_CHANNEL_ID }}
         run: |
           OFFSET=$(cat time.txt)
-          FONT_FILE="font.ttf"
+          FONT_FILE="HelveticaItalic.ttf"
 
           echo "Subscribers: -- / 100" > subs.txt
           touch alert.txt
@@ -163,14 +163,15 @@ jobs:
               -f flv -flvflags no_duration_filesize \
               "rtmp://a.rtmp.youtube.com/live2/$STREAM_KEY tcp_nodelay=1 rw_timeout=2000000" || true
 
-            # Точный подсчет отработанных секунд через системные часы
-            END_BURST=$(date +%s)
-            REAL_PASSED=$((END_BURST - NOW))
-            CURRENT_OFFSET=$((CURRENT_OFFSET + REAL_PASSED))
+            # Обновление оффсета без математических наложений
+            NOW_TIME=$(date +%s)
+            ELAPSED_RUNNER=$((NOW_TIME - START_RUNNER_TIME))
+            CURRENT_OFFSET=$((OFFSET + ELAPSED_RUNNER))
 
-            echo "Восстановление потока... Добавлено секундажа: $REAL_PASSED. Новый оффсет: $CURRENT_OFFSET"
+            echo "Восстановление потока... Текущий точный оффсет: $CURRENT_OFFSET"
             sleep 3
           done
+          
 
           # Идеальное ровное прибавление по завершении полного ранера (20700 сек)
           NEW_OFFSET=$((OFFSET + 20700))
