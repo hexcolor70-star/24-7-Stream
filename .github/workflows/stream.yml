@@ -160,7 +160,8 @@ jobs:
               -c:v libx264 -preset ultrafast -fps_mode cfr -b:v 2500k -maxrate 2500k -bufsize 2500k -pix_fmt yuv420p -g 60 \
               -c:a aac -b:a 128k -ar 44100 \
               -f flv -flvflags no_duration_filesize \
-              "rtmp://a.rtmp.youtube.com/live2/$STREAM_KEY tcp_nodelay=1 rw_timeout=2000000" || true
+              "rtmp://a.rtmp.youtube.com/live2/$STREAM_KEY tcp_nodelay=1 rw_timeout=10000000 reconnect=1 reconnect_streamed=1 reconnect_delay_max=5"
+              
 
             # Обновление оффсета без математических наложений
             NOW_TIME=$(date +%s)
