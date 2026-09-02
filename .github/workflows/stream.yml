@@ -164,6 +164,7 @@ jobs:
               "rtmp://a.rtmp.youtube.com/live2/$STREAM_KEY tcp_nodelay=1 rw_timeout=10000000 reconnect=1 reconnect_streamed=1 reconnect_delay_max=5" || EXIT_CODE=$?
               
               
+              
             # Если 5ч 45м истекли (timeout сработал с кодом 124) — выходим из цикла
             if [ "$EXIT_CODE" -eq 124 ]; then
               echo "5ч 45мин отработали штатно! Завершаем ранер."
